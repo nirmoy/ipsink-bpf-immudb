@@ -162,6 +162,7 @@ type v6Event struct {
 
 type Entry struct {
 	Pid     uint32 `json:pid`
+	DPort   uint16 `json:dport`
 	Command string `json:command`
 	Dst     string `json:dst`
 }
@@ -184,7 +185,7 @@ func main() {
 
 	connect4_ret_trace, err := m.LoadKprobe("trace_connect_v4_return")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load trace_connect_entry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load trace_connect_v4_return kprobe: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -208,7 +209,7 @@ func main() {
 
 	connect6_ret_trace, err := m.LoadKprobe("trace_connect_v6_return")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load trace_connect_entry kprobe: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load trace_connect_v6_return kprobe: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -224,7 +225,7 @@ func main() {
 
 	perfMapv4, err := bpf.InitPerfMap(tablev4, channelv4, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init perf map: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to init ipv4_events perf map: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -234,7 +235,7 @@ func main() {
 
 	perfMapv6, err := bpf.InitPerfMap(tablev6, channelv6, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init perf map: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to init ipv6_events perf map: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -263,6 +264,7 @@ func main() {
 			var eventv4 v4Event
 			var eventv6 v6Event
 			var pid uint32
+			var dport uint16
 			var comm string
 			var dst string
 
@@ -271,7 +273,7 @@ func main() {
 				ipByte := make([]byte, 4)
 				err := binary.Read(bytes.NewBuffer(datav4), binary.LittleEndian, &eventv4)
 				if err != nil {
-					fmt.Printf("failed to decode received data: %s\n", err)
+					fmt.Printf("failed to decode ipv4 received data: %s\n", err)
 					continue
 				}
 				comm = string(eventv4.Comm[:bytes.IndexByte(eventv4.Comm[:], 0)])
@@ -279,10 +281,11 @@ func main() {
 				binary.LittleEndian.PutUint32(ipByte, eventv4.Daddr)
 				ip := net.IP(ipByte)
 				dst = ip.String()
+				dport = eventv4.Dport
 			case datav6 := <-channelv6:
 				err := binary.Read(bytes.NewBuffer(datav6), binary.LittleEndian, &eventv6)
 				if err != nil {
-					fmt.Printf("failed to decode received data: %s\n", err)
+					fmt.Printf("failed to decode ipv6 received data: %s\n", err)
 					continue
 				}
 				comm = string(eventv6.Comm[:bytes.IndexByte(eventv6.Comm[:], 0)])
@@ -291,7 +294,7 @@ func main() {
 				continue
 			}
 
-			entry := Entry{Pid: pid, Command: comm, Dst: dst}
+			entry := Entry{Pid: pid, Command: comm, Dst: dst, DPort: dport}
 			json, err := json.MarshalIndent(entry, "", "\t")
 			if err != nil {
 				log.Fatal(err)
